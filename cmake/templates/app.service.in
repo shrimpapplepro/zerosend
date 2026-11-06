@@ -1,0 +1,13 @@
+[Unit]
+Description=@APP_DISPLAY_NAME@
+After=multi-user.target
+
+[Service]
+Type=simple
+@APP_SERVICE_ACCOUNT@
+ExecStart=/usr/bin/@PROJECT_NAME@
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
