@@ -697,7 +697,7 @@ if(NOT ZEROSEND_DAEMON_BINARY AND NOT USE_DESKTOP AND CMAKE_CROSSCOMPILING)
     # up inside the arm64 .deb. Build it on (or for) aarch64 Linux instead.
     message(FATAL_ERROR
         "Cross build: build zerosend-daemon for aarch64 Linux first, e.g. on a Raspberry Pi:\n"
-        "  cd zerosend/daemon && cargo build --release\n"
+        "  cd daemon && cargo build --release\n"
         "or with cargo-zigbuild:  cargo zigbuild --release --target aarch64-unknown-linux-gnu.2.36\n"
         "then pass -DZEROSEND_DAEMON_BINARY=<path to zerosend-daemon>.")
 endif()
