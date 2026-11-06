@@ -237,14 +237,18 @@ any missing libraries:
 ```bash
 scp ZeroSend_0.1.0_m5stack1_arm64.deb pi@cardputerzero.local:/tmp/
 ssh pi@cardputerzero.local 'sudo apt install /tmp/ZeroSend_0.1.0_m5stack1_arm64.deb &&
-    sudo systemctl restart APPLaunch.service'
+    systemctl --user restart APPLaunch.service'
 ```
 
-Over USB instead: set the USB switch to the left, enable ADB in Settings → Developer, then
-`adb push` the file to `/tmp/` and run the same `apt install` in `adb shell`.
+APPLaunch runs as a user service of the `pi` account, hence `systemctl --user` without `sudo`.
+It only reads launcher entries when it starts, so restart it (or reboot) after installing.
 
-Restarting APPLaunch makes ZeroSend appear in the launcher. It isn't in the CardputerZero
-AppStore. To remove it: `sudo apt remove zerosend`. The package contains:
+Over USB instead: set the USB switch to the left, enable ADB in Settings → Developer, then
+`adb push` the file to `/tmp/`, run the same `apt install` in `adb shell`, and reboot.
+
+ZeroSend then appears in the launcher. Hold Esc for 3 seconds to quit it, as with any app. It
+isn't in the CardputerZero AppStore. To remove it: `sudo apt remove zerosend`. The package
+contains:
 
 | Path | |
 | --- | --- |
