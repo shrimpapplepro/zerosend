@@ -1,15 +1,15 @@
 ZeroSend
 Copyright 2026 ZeroSend contributors
 
-daemon/ contains code forked from the LocalSend CLI (cli/ in this repository, at upstream
-commit 92e133aa43869e94d394fd04fa70c50a0f796a64), Copyright LocalSend contributors,
-licensed under the Apache License 2.0. Changes: the terminal UI was replaced by a JSON-lines
+daemon/ contains code forked from the LocalSend CLI (https://github.com/localsend/localsend,
+cli/ at commit 92e133aa43869e94d394fd04fa70c50a0f796a64), Copyright LocalSend contributors,
+licensed under the Apache License 2.0 (daemon/LICENSE). Changes: the terminal UI was replaced by a JSON-lines
 interface on stdin/stdout, and the CLI's modules were merged into one daemon. The daemon links
-LocalSend's protocol core (packages/core in this repository) unmodified, under the same license.
+LocalSend's protocol core (packages/core, fetched by cargo at the same commit) unmodified, under the same license.
 
 The GUI (src/) derives from the CardputerZero Template, Copyright M5Stack Technology CO LTD,
 MIT license.
 
 The app icon (assets/images/zerosend*.png) is LocalSend's logo
-(app/assets/img/logo-512.png in this repository, copied to assets/icon-source/) with "Zero" added.
+(app/assets/img/logo-512.png in the LocalSend repository, copied to assets/icon-source/) with "Zero" added.
 LocalSend is a trademark of its authors. ZeroSend is an unofficial community app.

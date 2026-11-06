@@ -931,6 +931,7 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 [[package]]
 name = "localsend"
 version = "0.1.0"
+source = "git+https://github.com/localsend/localsend?rev=92e133aa43869e94d394fd04fa70c50a0f796a64#92e133aa43869e94d394fd04fa70c50a0f796a64"
 dependencies = [
  "anyhow",
  "base64",

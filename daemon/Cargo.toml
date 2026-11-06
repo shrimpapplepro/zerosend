@@ -10,9 +10,10 @@ name = "zerosend-daemon"
 path = "src/main.rs"
 
 [dependencies]
-# LocalSend's own protocol core from this repository: discovery, the HTTPS
-# server, the pinned mTLS client. Used unmodified.
-localsend = { path = "../../packages/core", features = ["crypto", "discovery", "http", "multicast"] }
+# LocalSend's own protocol core (packages/core upstream): discovery, the HTTPS
+# server, the pinned mTLS client. Used unmodified, pinned to one upstream commit;
+# bump `rev` to take upstream changes.
+localsend = { git = "https://github.com/localsend/localsend", rev = "92e133aa43869e94d394fd04fa70c50a0f796a64", features = ["crypto", "discovery", "http", "multicast"] }
 anyhow = "1.0"
 bytes = "1.11"
 dirs = "6.0"
@@ -27,8 +28,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2.5"
 
-# Its own workspace, not a member of the repository's: the root workspace is
-# LocalSend's, and this keeps the fork's diff to the upstream files at zero.
+# Its own workspace, so cargo doesn't look for one above daemon/.
 [workspace]
 
 [profile.release]
