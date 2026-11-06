@@ -229,12 +229,22 @@ CMake refuses. Build `daemon/` for `aarch64-unknown-linux-gnu` first (natively, 
 
 ## Install on a CardputerZero
 
+Download `ZeroSend_<version>_m5stack1_arm64.deb` from
+[Releases](https://github.com/shrimpapplepro/zerosend/releases) (or build it, above), then copy it
+to the device from a computer on the same network and install it with apt, which also pulls in
+any missing libraries:
+
 ```bash
-scp dist/ZeroSend_*_arm64.deb pi@cardputerzero.local:
-ssh pi@cardputerzero.local 'sudo dpkg -i ZeroSend_*_arm64.deb'
+scp ZeroSend_0.1.0_m5stack1_arm64.deb pi@cardputerzero.local:/tmp/
+ssh pi@cardputerzero.local 'sudo apt install /tmp/ZeroSend_0.1.0_m5stack1_arm64.deb &&
+    sudo systemctl restart APPLaunch.service'
 ```
 
-ZeroSend then appears in the launcher. The package contains:
+Over USB instead: set the USB switch to the left, enable ADB in Settings → Developer, then
+`adb push` the file to `/tmp/` and run the same `apt install` in `adb shell`.
+
+Restarting APPLaunch makes ZeroSend appear in the launcher. It isn't in the CardputerZero
+AppStore. To remove it: `sudo apt remove zerosend`. The package contains:
 
 | Path | |
 | --- | --- |
