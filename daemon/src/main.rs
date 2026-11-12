@@ -53,6 +53,12 @@ const MAX_MESSAGE_BYTES: usize = 64_000;
 /// least every 30s: each of our announcements makes them register back.
 const DEVICE_STALE_AFTER: Duration = Duration::from_secs(95);
 
+/// How often the network interfaces are re-read. LocalSend's core binds one
+/// multicast socket per interface when discovery starts and never rebinds, so
+/// a Wi-Fi that comes up, drops or changes address after launch would leave
+/// discovery deaf (and the shown IP stale) until the app restarted.
+const NETWORK_CHECK_EVERY: Duration = Duration::from_secs(3);
+
 /// Files listed in an incoming request event; the count and total cover the rest.
 const MAX_LISTED_FILES: usize = 20;
 
@@ -75,6 +81,12 @@ pub enum AppEvent {
         success: bool,
     },
     DiscoveryFinished,
+    /// A fresh discovery, bound to the interfaces of `ips`, replacing the old one.
+    DiscoveryRestarted {
+        handle: Arc<DiscoveryHandle>,
+        stop: oneshot::Sender<()>,
+        ips: Vec<String>,
+    },
     Log {
         text: String,
     },
@@ -253,6 +265,59 @@ struct App {
     last_prune: Instant,
     last_devices: String,
     events_tx: mpsc::Sender<AppEvent>,
+    discovery_tx: mpsc::Sender<DiscoveryEvent>,
+    discovery_stop: Option<oneshot::Sender<()>>,
+    /// The interface addresses last reported to the GUI.
+    ips: Vec<String>,
+    /// The addresses the running discovery was bound to.
+    discovery_ips: Vec<String>,
+    restarting_discovery: bool,
+    last_network_check: Instant,
+}
+
+/// This device's addresses in the system's interface order, which the GUI
+/// relies on: it shows the first one (the LAN, not a VPN tunnel).
+fn interface_ips() -> Vec<String> {
+    local_interface_addresses(&InterfaceFilter::default())
+        .unwrap_or_default()
+        .iter()
+        .map(|ip| ip.to_string())
+        .collect()
+}
+
+/// Whether two readings hold the same addresses, in any order.
+fn same_ips(a: &[String], b: &[String]) -> bool {
+    let mut a = a.to_vec();
+    let mut b = b.to_vec();
+    a.sort();
+    b.sort();
+    a == b
+}
+
+/// Starts LocalSend discovery on the interfaces that exist right now.
+async fn start_discovery(
+    identity: &Identity,
+    event_tx: mpsc::Sender<DiscoveryEvent>,
+) -> (Arc<DiscoveryHandle>, oneshot::Sender<()>) {
+    let (stop_tx, stop_rx) = oneshot::channel::<()>();
+    let handle = localsend::discovery::start(
+        DiscoveryConfig {
+            group: DEFAULT_MULTICAST_GROUP,
+            group_v6: Some(DEFAULT_MULTICAST_GROUP_V6),
+            port: DEFAULT_PORT,
+            interface_filter: InterfaceFilter::default(),
+            device: identity.multicast_device(),
+            identity: DeviceIdentity {
+                cert_pem: identity.cert_pem.clone(),
+                private_key_pem: identity.key_pem.clone(),
+            },
+            timeout: DEFAULT_DISCOVERY_TIMEOUT,
+            event_tx: Some(event_tx),
+        },
+        stop_rx,
+    )
+    .await;
+    (Arc::new(handle), stop_tx)
 }
 
 async fn run(options: Options) -> anyhow::Result<()> {
@@ -292,35 +357,12 @@ async fn run(options: Options) -> anyhow::Result<()> {
     );
 
     let (discovery_tx, mut discovery_rx) = mpsc::channel::<DiscoveryEvent>(16);
-    let (discovery_stop_tx, discovery_stop_rx) = oneshot::channel::<()>();
-    let discovery = Arc::new(
-        localsend::discovery::start(
-            DiscoveryConfig {
-                group: DEFAULT_MULTICAST_GROUP,
-                group_v6: Some(DEFAULT_MULTICAST_GROUP_V6),
-                port: DEFAULT_PORT,
-                interface_filter: InterfaceFilter::default(),
-                device: identity.multicast_device(),
-                identity: DeviceIdentity {
-                    cert_pem: identity.cert_pem.clone(),
-                    private_key_pem: identity.key_pem.clone(),
-                },
-                timeout: DEFAULT_DISCOVERY_TIMEOUT,
-                event_tx: Some(discovery_tx),
-            },
-            discovery_stop_rx,
-        )
-        .await,
-    );
+    let ips = interface_ips();
+    let (discovery, discovery_stop_tx) = start_discovery(&identity, discovery_tx.clone()).await;
 
     let (command_tx, mut command_rx) = mpsc::channel::<Command>(16);
     ipc::spawn_reader(command_tx);
 
-    let ips: Vec<String> = local_interface_addresses(&InterfaceFilter::default())
-        .unwrap_or_default()
-        .iter()
-        .map(|ip| ip.to_string())
-        .collect();
     emit(json!({
         "ev": "ready",
         "alias": identity.alias,
@@ -350,6 +392,12 @@ async fn run(options: Options) -> anyhow::Result<()> {
         last_prune: Instant::now(),
         last_devices: String::new(),
         events_tx,
+        discovery_tx,
+        discovery_stop: Some(discovery_stop_tx),
+        discovery_ips: ips.clone(),
+        ips,
+        restarting_discovery: false,
+        last_network_check: Instant::now(),
     };
     app.emit_devices(true);
     app.refresh();
@@ -383,7 +431,9 @@ async fn run(options: Options) -> anyhow::Result<()> {
     // Shutdown: decline what is pending, cancel what is running, release the ports.
     app.handle_cancel();
     let _ = server_stop_tx.send(());
-    let _ = discovery_stop_tx.send(());
+    if let Some(stop) = app.discovery_stop.take() {
+        let _ = stop.send(());
+    }
     let _ = tokio::time::timeout(Duration::from_secs(1), app.server.wait_stopped()).await;
     let _ = tokio::time::timeout(Duration::from_secs(1), app.discovery.wait_stopped()).await;
     emit(json!({ "ev": "stopped" }));
@@ -431,6 +481,10 @@ impl App {
                     self.last_prune = Instant::now();
                     self.emit_devices(false); // drops devices that went quiet
                 }
+                if self.last_network_check.elapsed() > NETWORK_CHECK_EVERY {
+                    self.last_network_check = Instant::now();
+                    self.watch_network();
+                }
             }
             AppEvent::ReceiveFileResult {
                 session_id,
@@ -463,6 +517,9 @@ impl App {
                         }),
                     }));
                 }
+            }
+            AppEvent::DiscoveryRestarted { handle, stop, ips } => {
+                self.discovery_restarted(handle, stop, ips)
             }
             AppEvent::DiscoveryFinished => {
                 self.discovering = false;
@@ -519,6 +576,62 @@ impl App {
             }
         }
         false
+    }
+
+    /// Re-reads the interfaces. A change is reported to the GUI at once (an
+    /// empty list means no network), and discovery is restarted on the new
+    /// interfaces, one restart at a time.
+    fn watch_network(&mut self) {
+        let ips = interface_ips();
+        if !same_ips(&ips, &self.ips) {
+            self.ips = ips.clone();
+            emit(json!({
+                "ev": "network",
+                "ips": ips,
+                "multicast": !ips.is_empty() && self.discovery.multicast_error().is_none(),
+            }));
+        }
+        if self.restarting_discovery || same_ips(&ips, &self.discovery_ips) {
+            return;
+        }
+        self.restarting_discovery = true;
+        let old = self.discovery.clone();
+        let old_stop = self.discovery_stop.take();
+        let identity = self.identity.clone();
+        let discovery_tx = self.discovery_tx.clone();
+        let events_tx = self.events_tx.clone();
+        tokio::spawn(async move {
+            // The new sockets bind the same port, so the old ones go first.
+            if let Some(stop) = old_stop {
+                let _ = stop.send(());
+            }
+            let _ = tokio::time::timeout(Duration::from_secs(2), old.wait_stopped()).await;
+            let (handle, stop) = start_discovery(&identity, discovery_tx).await;
+            let _ = events_tx.send(AppEvent::DiscoveryRestarted { handle, stop, ips }).await;
+        });
+    }
+
+    fn discovery_restarted(
+        &mut self,
+        handle: Arc<DiscoveryHandle>,
+        stop: oneshot::Sender<()>,
+        ips: Vec<String>,
+    ) {
+        self.discovery = handle;
+        self.discovery_stop = Some(stop);
+        self.discovery_ips = ips;
+        self.restarting_discovery = false;
+        let multicast = self.discovery.multicast_error().is_none();
+        emit(json!({ "ev": "network", "ips": self.ips, "multicast": multicast }));
+        if self.ips.is_empty() {
+            return; // nothing to announce on; the next change restarts again
+        }
+        if let Some(err) = self.discovery.multicast_error() {
+            emit(json!({ "ev": "log", "text": format!("Multicast unavailable: {err:#}") }));
+        }
+        let discovery = self.discovery.clone();
+        tokio::spawn(async move { discovery.announce().await });
+        self.refresh();
     }
 
     /// Announces this device, probes the paired devices' last addresses, and

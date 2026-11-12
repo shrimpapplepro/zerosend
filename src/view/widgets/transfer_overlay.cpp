@@ -169,7 +169,10 @@ void TransferOverlay::render() {
         } else {
             lv_label_set_text_fmt(title_, "%s %s", sending ? "Sending to" : "Receiving from", transfer->alias.c_str());
             body = view::format_bytes(transfer->done) + " of " + view::format_bytes(transfer->total);
-            if (transfer->speed > 0) {
+            if (transfer->stalled) {
+                body += "\nStalled: no data for 15 s. " + transfer->alias +
+                        " may have left the network.";
+            } else if (transfer->speed > 0) {
                 body += "  ·  " + view::format_bytes(transfer->speed) + "/s";
             }
             lv_obj_remove_flag(bar_, LV_OBJ_FLAG_HIDDEN);

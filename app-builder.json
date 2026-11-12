@@ -1,6 +1,6 @@
 {
   "package_name": "zerosend",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "app_name": "ZeroSend",
   "bin_name": "zerosend",
   "description": "ZeroSend - LocalSend for the CardputerZero"

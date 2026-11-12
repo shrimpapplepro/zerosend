@@ -28,6 +28,16 @@ extern char** environ;
 namespace net {
 namespace {
 
+// A transfer with no progress for this long is shown as stalled. Wi-Fi hiccups
+// shorter than this pass unnoticed; a device that walked away does not.
+constexpr int64_t kStallAfterMs = 15000;
+
+int64_t now_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
 using json = nlohmann::json;
 
 // Bounded so a long uptime cannot grow the inbox without limit on 512MB.
@@ -316,6 +326,19 @@ void Service::poll() {
     for (const auto& line : lines) {
         apply(line);
     }
+    // Progress events stop when bytes stop, so nothing else would redraw a
+    // transfer whose peer vanished: check the clock here.
+    if (auto& transfer = state_.transfer; transfer && transfer->phase == Transfer::Phase::Running &&
+                                          !transfer->stalled) {
+        if (transfer->last_change_ms == 0) {
+            transfer->last_change_ms = now_ms();
+        } else if (now_ms() - transfer->last_change_ms > kStallAfterMs) {
+            transfer->stalled = true;
+            transfer->speed = 0;
+            LOG_WARN("transfer with {} stalled at {} of {} bytes", transfer->alias, transfer->done, transfer->total);
+            changed();
+        }
+    }
     if (finished && !stopping_ && state_.status != ServiceState::Status::Failed) {
         // A `fatal` event already set Failed with its reason; this is a crash.
         state_.status = ServiceState::Status::Failed;
@@ -361,6 +384,18 @@ void Service::apply(const std::string& line) {
             }
         }
         LOG_INFO("daemon ready as '{}' on port {}", state_.alias, state_.port);
+    }
+    else if (ev == "network") {
+        // The daemon re-reads the interfaces every few seconds and restarts
+        // discovery on a change; an empty list means no network at all.
+        state_.ips.clear();
+        if (event.contains("ips") && event["ips"].is_array()) {
+            for (const auto& ip : event["ips"]) {
+                if (ip.is_string()) state_.ips.push_back(ip.get<std::string>());
+            }
+        }
+        state_.multicast = flag(event, "multicast", true);
+        LOG_INFO("network: {} address(es), multicast {}", state_.ips.size(), state_.multicast ? "on" : "off");
     }
     else if (ev == "fatal") {
         state_.status = ServiceState::Status::Failed;
@@ -442,7 +477,12 @@ void Service::apply(const std::string& line) {
     else if (ev == "progress") {
         if (state_.transfer && state_.transfer->phase != Transfer::Phase::Done) {
             state_.transfer->phase = Transfer::Phase::Running;
-            state_.transfer->done = u64(event, "done");
+            const auto done = u64(event, "done");
+            if (done != state_.transfer->done || state_.transfer->last_change_ms == 0) {
+                state_.transfer->last_change_ms = now_ms();
+                state_.transfer->stalled = false;
+            }
+            state_.transfer->done = done;
             state_.transfer->total = u64(event, "total");
             state_.transfer->speed = u64(event, "speed");
         }

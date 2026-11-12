@@ -220,7 +220,7 @@ curl https://sh.rustup.rs -sSf | sh       # if cargo is missing
 cmake --preset cp0-native -DCM0_SDK_ROOT=/
 cmake --build --preset cp0-native-rel
 cpack --config build/cp0-native/CPackConfig.cmake -G DEB -C Release -B dist
-# -> dist/ZeroSend_0.1.0_m5stack1_arm64.deb
+# -> dist/ZeroSend_0.1.1_m5stack1_arm64.deb
 ```
 
 When cross-compiling from another architecture, cargo would build the daemon for the wrong CPU, so
@@ -235,8 +235,8 @@ to the device from a computer on the same network and install it with apt, which
 any missing libraries:
 
 ```bash
-scp ZeroSend_0.1.0_m5stack1_arm64.deb pi@cardputerzero.local:/tmp/
-ssh pi@cardputerzero.local 'sudo apt install /tmp/ZeroSend_0.1.0_m5stack1_arm64.deb &&
+scp ZeroSend_0.1.1_m5stack1_arm64.deb pi@cardputerzero.local:/tmp/
+ssh pi@cardputerzero.local 'sudo apt install /tmp/ZeroSend_0.1.1_m5stack1_arm64.deb &&
     systemctl --user restart APPLaunch.service'
 ```
 
@@ -288,6 +288,12 @@ Working in the simulator and the device-configuration build:
 - [x] Accept / decline / always-trust prompt; Quick Save
 - [x] Settings editing, with live restart of the network side
 - [x] Device key input through evdev, including Shift for capitals and `!` `@` `,` and friends
+- [x] Wi-Fi coming and going: started before Wi-Fi, dropped, or back again, ZeroSend notices
+      within about 3 seconds, shows **No network** instead of Ready, and rebinds discovery by
+      itself (LocalSend's core only binds it once, at start). Tested by running the daemon in a
+      network namespace and cutting its link
+- [x] A transfer whose other device walks away is flagged **Stalled** after 15 seconds without
+      data, instead of a frozen progress bar
 
 Needs the real CardputerZero:
 
