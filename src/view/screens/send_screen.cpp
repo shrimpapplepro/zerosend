@@ -134,6 +134,8 @@ void SendScreen::render() {
         auto* empty = lv_label_create(list_);
         const char* text = state.status == net::ServiceState::Status::Failed
                                ? state.status_text.c_str()
+                           : state.status == net::ServiceState::Status::Ready && state.ips.empty()
+                               ? "Not on a network. Connect to Wi-Fi first;\nZeroSend picks it up by itself."
                            : state.scanning ? "Looking for LocalSend devices..."
                                             : "No devices found. Open LocalSend on the\nother device, then press R.";
         lv_label_set_text(empty, text);

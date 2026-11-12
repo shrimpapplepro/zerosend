@@ -62,7 +62,7 @@ exec "$(dirname "$0")/zerosend" "$@"
 LAUNCHER
 chmod +x "$CONTENTS/MacOS/launch" "$CONTENTS/MacOS/zerosend"
 
-VERSION="$(git -C "$REPO_DIR" describe --tags --always --dirty 2>/dev/null || echo 0.1.0)"
+VERSION="$(git -C "$REPO_DIR" describe --tags --always --dirty 2>/dev/null || echo 0.1.1)"
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -74,7 +74,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
     <key>CFBundleExecutable</key><string>launch</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleShortVersionString</key><string>0.1.1</string>
     <key>CFBundleVersion</key><string>$VERSION</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>LSMinimumSystemVersion</key><string>11.0</string>

@@ -110,9 +110,13 @@ void ReceiveScreen::render() {
             address += (address.empty() ? "" : "  ") + ip;
             break;
         }
-        address += "  port " + std::to_string(state.port);
-        if (!state.multicast) {
-            address += "  (no multicast)";
+        if (address.empty()) {
+            address = "Not on a network. Connect to Wi-Fi to send and receive.";
+        } else {
+            address += "  port " + std::to_string(state.port);
+            if (!state.multicast) {
+                address += "  (no multicast)";
+            }
         }
     }
     lv_label_set_text(address_, address.c_str());
@@ -134,6 +138,10 @@ void ReceiveScreen::render() {
             break;
         case net::ServiceState::Status::Ready:
             pill = state.quick_save ? "Quick Save" : "Ready";
+            if (state.ips.empty()) {
+                pill = "No network";
+                pill_color = colors.warning;
+            }
             break;
     }
     lv_label_set_text(status_, pill);

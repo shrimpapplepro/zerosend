@@ -67,6 +67,10 @@ struct Transfer {
     uint64_t done{0};
     uint64_t total{0};
     uint64_t speed{0};
+    // No bytes moved for kStallAfter while Running: the other device most
+    // likely left the network. Shown instead of a frozen progress bar.
+    bool stalled{false};
+    int64_t last_change_ms{0}; // steady clock, when `done` last moved
     bool ok{false};
     std::string result; // human summary once Done
 };
