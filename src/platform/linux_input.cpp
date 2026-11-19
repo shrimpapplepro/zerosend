@@ -45,6 +45,8 @@ struct EvdevKeypad {
     bool router_event_pending{false};
     uint32_t router_key{0};
     bool router_pressed{false};
+    // The built-in tca8418c keypad, whose sym layer needs translating.
+    bool cp0_keypad{false};
 };
 #endif
 
@@ -144,6 +146,51 @@ void key_event_cb(lv_event_t* event) {
 }
 
 #if !USE_DESKTOP
+// The CP0 keypad's sym layer (every blue legend is sym+key). Its driver
+// (m5stack,tca8418c; linux,keymap1 in the device tree) sends a keycode nothing
+// else on the keyboard uses for each blue symbol -- KATAKANA for sym+V ",",
+// HIRAGANA for sym+B ".", KP7 for sym+R "-" -- and even the US punctuation
+// codes on the digit row stand for the legends printed there (sym+1 sends
+// LEFTBRACE for "!"). For this keypad the code means the legend. Verified on a
+// CardputerZero in Perlica's Tools, 2026-11-19. 0 = not a sym-layer code.
+uint32_t map_cp0_sym_key(uint16_t code) {
+    switch (code) {
+        case KEY_LEFTBRACE: return '!';
+        case KEY_RIGHTBRACE: return '@';
+        case KEY_SEMICOLON: return '#';
+        case KEY_APOSTROPHE: return '$';
+        case KEY_GRAVE: return '%';
+        case KEY_BACKSLASH: return '^';
+        case KEY_COMMA: return '&';
+        case KEY_DOT: return '*';
+        case KEY_SLASH: return '(';
+        case KEY_MUHENKAN: return ')';
+        case KEY_KPASTERISK: return '~';
+        case KEY_NUMLOCK: return '`';
+        case KEY_SCROLLLOCK: return '_';
+        case KEY_KP7: return '-';
+        case KEY_KP8: return '+';
+        case KEY_KP9: return '=';
+        case KEY_KPMINUS: return '[';
+        case KEY_KP4: return ']';
+        case KEY_KP5: return '{';
+        case KEY_KP6: return '}';
+        case KEY_KP1: return ';';
+        case KEY_KP2: return ':';
+        case KEY_KP3: return '\'';
+        case KEY_KP0: return '"';
+        case KEY_KPDOT: return '<';
+        case KEY_ZENKAKUHANKAKU: return '>';
+        case KEY_102ND: return '\\';
+        case KEY_RO: return '|';
+        case KEY_KATAKANA: return ',';
+        case KEY_HIRAGANA: return '.';
+        case KEY_HENKAN: return '/';
+        case KEY_KATAKANAHIRAGANA: return '?';
+        default: return 0;
+    }
+}
+
 uint32_t map_evdev_key(uint16_t code) {
     switch (code) {
         case KEY_ESC:
@@ -294,12 +341,17 @@ void evdev_read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
             continue;
         }
 
-        auto key = map_evdev_key(input.code);
+        uint32_t key = keypad->cp0_keypad ? map_cp0_sym_key(input.code) : 0;
+        const bool sym_symbol = key != 0;
+        if (!key) key = map_evdev_key(input.code);
         if (!key || input.value == 2) {
             continue;
         }
 
-        if (shift_held && key >= 'a' && key <= 'z') {
+        if (sym_symbol) {
+            // already the printed symbol; Shift does not change it
+        }
+        else if (shift_held && key >= 'a' && key <= 'z') {
             key = key - 'a' + 'A';
         }
         else if (shift_held && key < 128) {
@@ -339,6 +391,10 @@ void evdev_delete_cb(lv_event_t* event) {
 lv_indev_t* create_keypad_from_fd(int fd) {
     auto* keypad = new EvdevKeypad;
     keypad->fd = fd;
+    char name[128] = {};
+    if (ioctl(fd, EVIOCGNAME(sizeof(name) - 1), name) >= 0) {
+        keypad->cp0_keypad = std::strstr(name, "tca8418") != nullptr;
+    }
 
     auto* indev = lv_indev_create();
     if (!indev) {

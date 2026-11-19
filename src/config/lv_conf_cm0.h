@@ -45,7 +45,9 @@
 
 #define LV_USE_ASSERT_NULL                 1
 #define LV_USE_ASSERT_MALLOC               1
-#define LV_USE_ASSERT_OBJ                  1
+/* Off: it validates an object by walking the whole object tree on nearly every
+ * call; in Perlica's Tools that made building a screen take ~100 ms on the CM0. */
+#define LV_USE_ASSERT_OBJ                  0
 
 /*====================
    DRM/KMS
@@ -58,7 +60,7 @@
 #define LV_USE_LINUX_FBDEV                 1
 #define LV_LINUX_FBDEV_RENDER_MODE         LV_DISPLAY_RENDER_MODE_PARTIAL
 #define LV_LINUX_FBDEV_BUFFER_COUNT        0
-#define LV_LINUX_FBDEV_BUFFER_SIZE         60
+#define LV_LINUX_FBDEV_BUFFER_SIZE         170  /* full height: a frame leaves in one flush */
 #define LV_LINUX_FBDEV_MMAP                1
 #define LV_DEF_REFR_PERIOD                 16
 
@@ -92,7 +94,7 @@
 #define LV_USE_FREETYPE                    1
 /* lv_snapshot_take(), used by platform/screenshot_service for fn+J. */
 #define LV_USE_SNAPSHOT                    1
-#define LV_FREETYPE_CACHE_FT_GLYPH_CNT     256
+#define LV_FREETYPE_CACHE_FT_GLYPH_CNT     2048  /* 256 thrashed across faces and sizes */
 
 #define LV_USE_TINY_TTF                    0
 
@@ -144,6 +146,10 @@
 /*====================
    PERFORMANCE
  *====================*/
+
+/* Two software render threads (the CM0 has four A53 cores) and NEON blending. */
+#define LV_DRAW_SW_DRAW_UNIT_CNT           2
+#define LV_USE_DRAW_SW_ASM                 LV_DRAW_SW_ASM_NEON
 
 #define LV_USE_PERF_MONITOR                0
 #define LV_USE_SYSMON                      0

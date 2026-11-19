@@ -206,12 +206,10 @@ lv_display_t* init_device_display() {
         return nullptr;
     }
 
-    // M5's own APPLaunch calls this, and the Template does not. On the SPI
-    // ST7789V panel a partial-update path can leave stale frames on screen, so
-    // follow the shipping launcher rather than the template here.
-    // (Read out of /usr/share/APPLaunch/bin/M5CardputerZero-APPLaunch, which
-    // exports lv_linux_fbdev_set_force_refresh alongside the fbdev symbols.)
-    lv_linux_fbdev_set_force_refresh(display, true);
+    // No lv_linux_fbdev_set_force_refresh(). On the CP0's DRM-backed fbdev
+    // (panel-mipi-dbi) each FBIOPUT_VSCREENINFO+FORCE is a forced mode-set and a
+    // full SPI push; per flushed strip it made redraws slow and tear. Measured in
+    // Perlica's Tools, 2026-11-19; CardBili does the same and reaches 30 fps.
 
     platform::init_key_input(display);
     return display;
