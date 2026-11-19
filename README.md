@@ -218,7 +218,7 @@ curl https://sh.rustup.rs -sSf | sh       # if cargo is missing
 cmake --preset cp0-native -DCM0_SDK_ROOT=/
 cmake --build --preset cp0-native-rel
 cpack --config build/cp0-native/CPackConfig.cmake -G DEB -C Release -B dist
-# -> dist/ZeroSend_0.2.0_m5stack1_arm64.deb
+# -> dist/ZeroSend_0.2.1_m5stack1_arm64.deb
 ```
 
 When cross-compiling from another architecture, cargo would build the daemon for the wrong CPU, so
@@ -233,8 +233,8 @@ to the device from a computer on the same network and install it with apt, which
 any missing libraries:
 
 ```bash
-scp ZeroSend_0.2.0_m5stack1_arm64.deb <user>@<hostname>.local:/tmp/
-ssh <user>@<hostname>.local 'sudo apt install /tmp/ZeroSend_0.2.0_m5stack1_arm64.deb &&
+scp ZeroSend_0.2.1_m5stack1_arm64.deb <user>@<hostname>.local:/tmp/
+ssh <user>@<hostname>.local 'sudo apt install /tmp/ZeroSend_0.2.1_m5stack1_arm64.deb &&
     systemctl --user restart APPLaunch.service'
 ```
 
