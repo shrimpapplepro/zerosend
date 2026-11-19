@@ -12,7 +12,7 @@ set(APP_DEBIAN_ARCHITECTURE "arm64" CACHE STRING "Debian package architecture")
 set(APP_MAINTAINER "shrimpapplepro <96687059+shrimpapplepro@users.noreply.github.com>" CACHE STRING "Debian package maintainer")
 set(APP_PACKAGE_DESCRIPTION "ZeroSend - LocalSend for the CardputerZero: share files and text with nearby devices" CACHE STRING "Debian package summary")
 set(APP_INSTALL_SYSTEMD_SERVICE ON CACHE BOOL "Install a systemd service file for embedded deployments")
-set(APP_SERVICE_USER "pi" CACHE STRING "Non-root user the systemd service runs as. Empty means root, which the AppStore rejects at publish")
+set(APP_SERVICE_USER "1000" CACHE STRING "Non-root user (name or uid) the systemd service runs as. uid 1000 is the desktop user on every image; its name is picked at first boot, so do not hardcode pi. Empty means root, which the AppStore rejects at publish")
 
 # The upstream template ships a service with no User=, so it runs as root and
 # `czdev publish` rejects the package. Run as APP_SERVICE_USER instead, with the
