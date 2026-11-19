@@ -9,12 +9,10 @@ network. No cloud, no account, no cable.** ZeroSend works with the official
 It's a standalone app for the CardputerZero: install the `.deb`, and it appears in the launcher
 next to the others.
 
-> [!WARNING]
-> **Work in progress, not yet tested on a real CardputerZero.** The hardware isn't in the
-> author's hands yet. Everything below runs in the desktop simulator and in a device-configuration
-> build (fbdev, evdev, arm64 Debian) on another arm64 board, against the official LocalSend apps.
-> The screenshots come from that device build. Expect rough edges on real hardware until it has
-> been verified there (see [Status](#status)).
+> [!NOTE]
+> **Tested on a real CardputerZero** (stock image, Debian 13, RGB565 panel) against the official
+> LocalSend apps: discovery, sending text, receiving files byte-for-byte, the keyboard including
+> Shift and punctuation, and the Wi-Fi and battery indicators. See [Status](#status).
 
 ZeroSend doesn't imitate LocalSend. Its networking **is** LocalSend: the same Rust protocol core
 ([`packages/core`](https://github.com/localsend/localsend/tree/main/packages/core)) LocalSend's own
@@ -220,7 +218,7 @@ curl https://sh.rustup.rs -sSf | sh       # if cargo is missing
 cmake --preset cp0-native -DCM0_SDK_ROOT=/
 cmake --build --preset cp0-native-rel
 cpack --config build/cp0-native/CPackConfig.cmake -G DEB -C Release -B dist
-# -> dist/ZeroSend_0.1.1_m5stack1_arm64.deb
+# -> dist/ZeroSend_0.2.0_m5stack1_arm64.deb
 ```
 
 When cross-compiling from another architecture, cargo would build the daemon for the wrong CPU, so
@@ -235,12 +233,13 @@ to the device from a computer on the same network and install it with apt, which
 any missing libraries:
 
 ```bash
-scp ZeroSend_0.1.1_m5stack1_arm64.deb pi@cardputerzero.local:/tmp/
-ssh pi@cardputerzero.local 'sudo apt install /tmp/ZeroSend_0.1.1_m5stack1_arm64.deb &&
+scp ZeroSend_0.2.0_m5stack1_arm64.deb <user>@<hostname>.local:/tmp/
+ssh <user>@<hostname>.local 'sudo apt install /tmp/ZeroSend_0.2.0_m5stack1_arm64.deb &&
     systemctl --user restart APPLaunch.service'
 ```
 
-APPLaunch runs as a user service of the `pi` account, hence `systemctl --user` without `sudo`.
+APPLaunch runs as a user service of the account made at first boot (`<user>` above), hence
+`systemctl --user` without `sudo`.
 It only reads launcher entries when it starts, so restart it (or reboot) after installing.
 
 Over USB instead: set the USB switch to the left, enable ADB in Settings → Developer, then
@@ -279,15 +278,22 @@ different daemon build.
 
 ## Status
 
-**Unfinished: waiting on hardware.**
+Verified on a real CardputerZero (2026-11-19):
 
-Working in the simulator and the device-configuration build:
+- [x] Runs from the launcher: `/dev/fb0` (RGB565 on the device), the keyboard event node, and the
+      battery, charging and Wi-Fi indicators in the title bar
+- [x] Multicast discovery of the official macOS app; sending a text; receiving a 3 MB file with a
+      matching SHA-256; the accept prompt
+- [x] Typing with Shift and punctuation (`,` `.` `/` `;` `!`) on the device keyboard
+- [x] Hold Esc to quit stops both the app and its daemon
+- [x] About 15 MB of RAM for the app and its daemon together
+
+Also working, tested in the simulator and in a device-configuration build:
 
 - [x] Discovery both ways with the official apps (multicast and subnet scan)
 - [x] Send and receive files, folders and texts; progress; cancel
 - [x] Accept / decline / always-trust prompt; Quick Save
 - [x] Settings editing, with live restart of the network side
-- [x] Device key input through evdev, including Shift for capitals and `!` `@` `,` and friends
 - [x] Wi-Fi coming and going: started before Wi-Fi, dropped, or back again, ZeroSend notices
       within about 3 seconds, shows **No network** instead of Ready, and rebinds discovery by
       itself (LocalSend's core only binds it once, at start). Tested by running the daemon in a
@@ -295,14 +301,12 @@ Working in the simulator and the device-configuration build:
 - [x] A transfer whose other device walks away is flagged **Stalled** after 15 seconds without
       data, instead of a frozen progress bar
 
-Needs the real CardputerZero:
+Still open:
 
-- [ ] Run it at all on the device: framebuffer (`/dev/fb0` vs `/dev/fb1`), keyboard event node,
-      battery and Wi-Fi indicators
-- [ ] Verify the keyboard's symbol layer: punctuation keycodes are mapped to the US layout,
-      unconfirmed against the CardputerZero's own keymap
-- [ ] Identity generation time and transfer speed on the Cortex-A53 and 2.4 GHz Wi-Fi
+- [ ] Transfer speed on good Wi-Fi (the hardware test ran at the edge of the router's range,
+      where any transfer manages only tens of KB/s)
 - [ ] Battery impact of keeping discovery running
+- [ ] The `-` and `=` keys: the device keyboard does not report the standard key codes for them
 
 Not planned yet: PIN-protected receivers, LocalSend's "share via link" browser mode, text entry
 beyond ASCII (no on-device IME), emoji (the font has none).
