@@ -310,8 +310,10 @@ int Application::run() {
            && simulator_frame.process_events()
 #endif
     ) {
-        lv_timer_handler();
-        lv_delay_ms(5);
+        // Sleep until LVGL's next timer is due (refresh 16 ms, input read 30 ms) instead of
+        // waking every 5 ms: ~60 wakeups/s instead of ~200 on a battery device.
+        const uint32_t next = lv_timer_handler();
+        lv_delay_ms(next == LV_NO_TIMER_READY ? 16 : LV_CLAMP(1, next, 16));
     }
 
     if (quit_observer) {
