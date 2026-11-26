@@ -6,6 +6,8 @@
 
 #include "titlebar.h"
 
+#include "label_util.h"
+
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -65,12 +67,7 @@ void configure_label(lv_obj_t* label,
 }
 
 void set_visible(lv_obj_t* obj, bool visible) {
-    if (visible) {
-        lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
-    }
-    else {
-        lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-    }
+    view::set_visible_if_changed(obj, visible);
 }
 
 } // namespace
@@ -233,26 +230,26 @@ void TitleBar::refresh_time() {
 #endif
     std::array<char, 6> text{};
     std::strftime(text.data(), text.size(), "%H:%M", &local_time);
-    lv_label_set_text(time_label_, text.data());
+    view::set_label_text_if_changed(time_label_, text.data());
 }
 
 void TitleBar::refresh_device_status() {
     const auto status = platform::read_device_status();
 
-    lv_label_set_text(wifi_label_, wifi_icon(status.wifi_strength_percent, status.wifi_connected));
+    view::set_label_text_if_changed(wifi_label_, wifi_icon(status.wifi_strength_percent, status.wifi_connected));
     set_visible(wifi_label_, status.wifi_connected);
 
-    lv_label_set_text(ethernet_label_, ICON_ETHERNET);
+    view::set_label_text_if_changed(ethernet_label_, ICON_ETHERNET);
     set_visible(ethernet_label_, status.ethernet_connected);
 
-    lv_label_set_text(battery_icon_label_,
+    view::set_label_text_if_changed(battery_icon_label_,
                       battery_icon(status.battery_percent, status.battery_charging));
     set_visible(battery_icon_label_, status.battery_present);
     set_visible(battery_percent_label_, status.battery_present);
     if (status.battery_present) {
         std::array<char, 6> percent{};
         std::snprintf(percent.data(), percent.size(), "%d%%", std::clamp(status.battery_percent, 0, 100));
-        lv_label_set_text(battery_percent_label_, percent.data());
+        view::set_label_text_if_changed(battery_percent_label_, percent.data());
     }
 }
 

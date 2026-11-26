@@ -1,4 +1,7 @@
 #include "linux_input.h"
+#include <vector>
+#include <cstdlib>
+#include <algorithm>
 
 #include "screenshot_service.h"
 
@@ -7,6 +10,8 @@
 #include <cstring>
 
 #if !USE_DESKTOP
+#include <poll.h>
+#include <sys/eventfd.h>
 #include <cerrno>
 #include <dirent.h>
 #include <fcntl.h>
@@ -375,8 +380,12 @@ void evdev_read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
     data->state = keypad->state;
 }
 
+// Keypads the main loop waits on (event-driven input).
+std::vector<lv_indev_t*> event_keypads;
+
 void evdev_delete_cb(lv_event_t* event) {
     auto* indev = static_cast<lv_indev_t*>(lv_event_get_target(event));
+    event_keypads.erase(std::remove(event_keypads.begin(), event_keypads.end(), indev), event_keypads.end());
     auto* keypad = static_cast<EvdevKeypad*>(lv_indev_get_driver_data(indev));
     if (!keypad) {
         return;
@@ -408,6 +417,13 @@ lv_indev_t* create_keypad_from_fd(int fd) {
     lv_indev_set_driver_data(indev, keypad);
     lv_indev_add_event_cb(indev, evdev_delete_cb, LV_EVENT_DELETE, nullptr);
     attach_key_router(indev);
+    // Read on demand from wait_for_key_input() instead of every 30 ms.
+    // ZEROSEND_INPUT_POLL=1 restores LVGL's timer-driven polling.
+    const char* poll_mode = std::getenv("ZEROSEND_INPUT_POLL");
+    if (!poll_mode || std::strcmp(poll_mode, "1") != 0) {
+        lv_indev_set_mode(indev, LV_INDEV_MODE_EVENT);
+        event_keypads.push_back(indev);
+    }
     return indev;
 }
 
@@ -465,6 +481,74 @@ void discover_keypads(lv_display_t* display) {
 #endif
 
 } // namespace
+
+namespace {
+
+struct WakeHandlerEntry {
+    WakeHandler handler;
+    void* user_data;
+};
+std::vector<WakeHandlerEntry> wake_handlers;
+#if !USE_DESKTOP
+int wake_fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+#endif
+
+} // namespace
+
+void wake_main_loop() {
+#if !USE_DESKTOP
+    if (wake_fd >= 0) {
+        const uint64_t one = 1;
+        (void)!write(wake_fd, &one, sizeof(one));
+    }
+#endif
+}
+
+void add_wake_handler(WakeHandler handler, void* user_data) {
+    remove_wake_handler(user_data);
+    wake_handlers.push_back({handler, user_data});
+}
+
+void remove_wake_handler(void* user_data) {
+    wake_handlers.erase(std::remove_if(wake_handlers.begin(), wake_handlers.end(),
+                                       [user_data](const WakeHandlerEntry& e) { return e.user_data == user_data; }),
+                        wake_handlers.end());
+}
+
+void wait_for_key_input(int timeout_ms) {
+#if !USE_DESKTOP
+    pollfd fds[9];
+    lv_indev_t* owners[9];
+    nfds_t count = 0;
+    fds[count] = {wake_fd, POLLIN, 0};
+    owners[count++] = nullptr;
+    for (lv_indev_t* indev : event_keypads) {
+        auto* keypad = static_cast<EvdevKeypad*>(lv_indev_get_driver_data(indev));
+        if (keypad && keypad->fd >= 0 && count < 9) {
+            fds[count] = {keypad->fd, POLLIN, 0};
+            owners[count++] = indev;
+        }
+    }
+    if (poll(fds, count, timeout_ms) <= 0) {
+        return;  // timeout, or EINTR from a signal: the loop checks its stop flag
+    }
+    if (fds[0].revents & POLLIN) {
+        uint64_t drained = 0;
+        (void)!read(wake_fd, &drained, sizeof(drained));
+        const auto handlers = wake_handlers;  // a handler may (un)register
+        for (const auto& entry : handlers) {
+            entry.handler(entry.user_data);
+        }
+    }
+    for (nfds_t i = 1; i < count; ++i) {
+        if (fds[i].revents & POLLIN) {
+            lv_indev_read(owners[i]);
+        }
+    }
+#else
+    LV_UNUSED(timeout_ms);
+#endif
+}
 
 void init_key_input(lv_display_t* display) {
 #if !USE_DESKTOP

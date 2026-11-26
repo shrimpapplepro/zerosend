@@ -17,6 +17,8 @@
 #include "zerosend_service.h"
 
 #include <cstdlib>
+#include <cstring>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -179,6 +181,45 @@ std::string resolve_framebuffer_device() {
 }
 #endif
 
+// The CP0 LCD is a DRM SPI panel; /dev/fb0 is the kernel's fbdev emulation,
+// which sends mmap writes to the panel from a deferred-I/O timer (every 50 ms),
+// capping what reaches the glass at ~10-20 fps and adding up to 50 ms to every
+// key press. fsync() on the fbdev runs that flush at once, so a frame that
+// changed a large part of the screen goes out immediately; small updates (the
+// clock) keep the batched pace. ZEROSEND_FB_SYNC=0 turns it off.
+int g_frame_push_fd = -1;
+uint32_t g_frame_pixels = 0;
+uint32_t g_frame_push_min_pixels = 0;
+
+void frame_push_cb(lv_event_t* event) {
+    if (lv_event_get_code(event) == LV_EVENT_FLUSH_START) {
+        if (const auto* area = static_cast<const lv_area_t*>(lv_event_get_param(event))) {
+            g_frame_pixels += static_cast<uint32_t>(lv_area_get_size(area));
+        }
+        return;
+    }
+    if (g_frame_pixels > 0 && g_frame_pixels >= g_frame_push_min_pixels) {
+        fsync(g_frame_push_fd);
+    }
+    g_frame_pixels = 0;
+}
+
+[[maybe_unused]] void enable_frame_push(lv_display_t* display, const std::string& framebuffer) {
+    const char* enabled = std::getenv("ZEROSEND_FB_SYNC");
+    if (enabled && std::strcmp(enabled, "0") == 0) {
+        return;
+    }
+    g_frame_push_fd = open(framebuffer.c_str(), O_RDWR | O_CLOEXEC);
+    if (g_frame_push_fd < 0) {
+        return;
+    }
+    const uint32_t screen = static_cast<uint32_t>(lv_display_get_horizontal_resolution(display)) *
+                            static_cast<uint32_t>(lv_display_get_vertical_resolution(display));
+    g_frame_push_min_pixels = screen * 12U / 100U;  // a page switch, not the clock
+    lv_display_add_event_cb(display, frame_push_cb, LV_EVENT_FLUSH_START, nullptr);
+    lv_display_add_event_cb(display, frame_push_cb, LV_EVENT_REFR_READY, nullptr);
+}
+
 lv_display_t* init_device_display() {
 #if APP_USE_DRM
     auto* display = lv_linux_drm_create();
@@ -211,6 +252,7 @@ lv_display_t* init_device_display() {
     // full SPI push; per flushed strip it made redraws slow and tear. Measured in
     // Perlica's Tools, 2026-11-19; CardBili does the same and reaches 30 fps.
 
+    enable_frame_push(display, framebuffer);
     platform::init_key_input(display);
     return display;
 #endif
@@ -313,7 +355,14 @@ int Application::run() {
         // Sleep until LVGL's next timer is due (refresh 16 ms, input read 30 ms) instead of
         // waking every 5 ms: ~60 wakeups/s instead of ~200 on a battery device.
         const uint32_t next = lv_timer_handler();
+#if USE_DESKTOP
         lv_delay_ms(next == LV_NO_TIMER_READY ? 16 : LV_CLAMP(1, next, 16));
+#else
+        // Sleep until a key, a worker's wake_main_loop(), or LVGL's next timer.
+        // LVGL pauses its refresh timer while nothing is invalid, so an idle
+        // screen wakes only for its own timers instead of ~60 times a second.
+        platform::wait_for_key_input(next == LV_NO_TIMER_READY ? -1 : static_cast<int>(next));
+#endif
     }
 
     if (quit_observer) {

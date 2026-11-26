@@ -13,6 +13,19 @@ constexpr uint32_t kSpecialKeyBase = 0x200000U;
 constexpr uint32_t kKeyPrintScreen = kSpecialKeyBase | 18U;
 
 void init_key_input(lv_display_t* display);
+
+// Sleeps until a key arrives, wake_main_loop() is called, or timeout_ms passes
+// (-1: no timeout). Keypads run in LVGL's event mode and are read here on
+// demand instead of every 30 ms; wake handlers run here, on the LVGL thread.
+void wait_for_key_input(int timeout_ms);
+
+// Any thread: wakes wait_for_key_input() so the registered handlers run on the
+// LVGL thread. Background workers call it when they have results, instead of
+// the UI polling them on a fast timer. A no-op in the desktop simulator.
+void wake_main_loop();
+using WakeHandler = void (*)(void* user_data);
+void add_wake_handler(WakeHandler handler, void* user_data);
+void remove_wake_handler(void* user_data);
 void attach_key_router(lv_indev_t* indev);
 
 // Text entry claims the letter keys. While this is on, F/Z/X/C stay letters;

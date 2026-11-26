@@ -6,6 +6,7 @@
 
 #include "zerosend_service.h"
 
+#include "linux_input.h"
 #include "logger.h"
 
 #include <nlohmann/json.hpp>
@@ -223,7 +224,20 @@ void Service::start(const ServiceOptions& options) {
     reader_ = std::thread([this, fd = from_child[0]]() { reader_loop(fd); });
 
     if (!poll_timer_) {
+#if USE_DESKTOP
         poll_timer_ = lv_timer_create(poll_timer_cb, 40, this);
+#else
+        // The reader thread wakes the main loop when a line arrives and this
+        // handler runs the poll at once; the timer is only a safety net. It
+        // was 40 ms, 25 wakeups a second with nothing to read.
+        poll_timer_ = lv_timer_create(poll_timer_cb, 1000, this);
+        platform::add_wake_handler(
+            [](void* self) {
+                auto* service = static_cast<Service*>(self);
+                if (service->poll_timer_) lv_timer_ready(service->poll_timer_);
+            },
+            this);
+#endif
     }
 }
 
@@ -255,6 +269,7 @@ void Service::stop() {
     if (reader_.joinable()) {
         reader_.join();
     }
+    platform::remove_wake_handler(this);
     if (poll_timer_) {
         lv_timer_delete(poll_timer_);
         poll_timer_ = nullptr;
@@ -297,15 +312,23 @@ void Service::reader_loop(int fd) {
         }
         buffer.append(chunk, static_cast<std::size_t>(n));
         std::size_t newline;
+        bool queued = false;
         while ((newline = buffer.find('\n')) != std::string::npos) {
             std::lock_guard<std::mutex> lock(queue_mutex_);
             queue_.push_back(buffer.substr(0, newline));
             buffer.erase(0, newline + 1);
+            queued = true;
+        }
+        if (queued) {
+            platform::wake_main_loop();  // the UI applies it now, not on the next poll
         }
     }
     ::close(fd);
-    std::lock_guard<std::mutex> lock(queue_mutex_);
-    reader_finished_ = true;
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        reader_finished_ = true;
+    }
+    platform::wake_main_loop();
 }
 
 void Service::poll_timer_cb(lv_timer_t* timer) {
